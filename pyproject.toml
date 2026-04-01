@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "imagerag"
+version = "0.1.0"
+description = "Search local photos and videos using text descriptions. Runs fully offline, no GPU needed."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "sentence-transformers",
+    "faiss-cpu",
+    "Pillow",
+    "opencv-python",
+    "typer[all]",
+    "gradio",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+imagerag = "imagerag.cli:app"
