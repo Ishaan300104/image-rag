@@ -5,6 +5,7 @@ import cv2
 from pathlib import Path
 from PIL import Image
 from sentence_transformers import SentenceTransformer
+from rich.progress import Progress, BarColumn, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 
 # specifying paths
@@ -54,39 +55,55 @@ def index_directory(directory, frame_interval=5, verbose=True):
     metadata = []
     directory = Path(directory).expanduser().resolve()
 
-    for path in sorted(directory.rglob("*")):
-        suffix = path.suffix.lower()
+    all_files = [
+        p for p in sorted(directory.rglob("*"))
+        if p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS
+    ]
 
-        if suffix in IMAGE_EXTS:
-            try:
-                img = Image.open(path).convert("RGB")
-                emb = model.encode(img, convert_to_numpy=True)
-                emb = emb / np.linalg.norm(emb)
-                embeddings.append(emb)
-                metadata.append({"path": str(path), "type": "image"})
-                if verbose:
-                    print(f"  [image] {path.name}")
-            except Exception as e:
-                if verbose:
-                    print(f"  [skip]  {path.name}: {e}")
+    if not all_files:
+        print("No images or videos found.")
+        return
 
-        elif suffix in VIDEO_EXTS:
-            frame_count = 0
-            for frame, ts in _extract_video_frames(path, frame_interval):
+    skipped = 0
+
+    with Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeRemainingColumn(),
+        TextColumn("[dim]{task.fields[filename]}"),
+    ) as progress:
+        task = progress.add_task("Indexing", total=len(all_files), filename="")
+
+        for path in all_files:
+            suffix = path.suffix.lower()
+            progress.update(task, filename=path.name)
+
+            if suffix in IMAGE_EXTS:
                 try:
-                    emb = model.encode(frame, convert_to_numpy=True)
+                    img = Image.open(path).convert("RGB")
+                    emb = model.encode(img, convert_to_numpy=True)
                     emb = emb / np.linalg.norm(emb)
                     embeddings.append(emb)
-                    metadata.append({"path": str(path), "type": "video", "timestamp": ts})
-                    frame_count += 1
-                except Exception as e:
-                    if verbose:
-                        print(f"  [skip]  {path.name} @{ts:.1f}s: {e}")
-            if verbose and frame_count:
-                print(f"  [video] {path.name} ({frame_count} frames)")
+                    metadata.append({"path": str(path), "type": "image"})
+                except Exception:
+                    skipped += 1
+
+            elif suffix in VIDEO_EXTS:
+                for frame, ts in _extract_video_frames(path, frame_interval):
+                    try:
+                        emb = model.encode(frame, convert_to_numpy=True)
+                        emb = emb / np.linalg.norm(emb)
+                        embeddings.append(emb)
+                        metadata.append({"path": str(path), "type": "video", "timestamp": ts})
+                    except Exception:
+                        skipped += 1
+
+            progress.advance(task)
 
     if not embeddings:
-        print("No images or videos found.")
+        print("No images or videos could be indexed.")
         return
 
     matrix = np.stack(embeddings).astype("float32")
@@ -98,3 +115,5 @@ def index_directory(directory, frame_interval=5, verbose=True):
         json.dump(metadata, f)
 
     print(f"\nDone. Indexed {len(embeddings)} items from {directory}")
+    if skipped:
+        print(f"Skipped {skipped} files due to errors.")

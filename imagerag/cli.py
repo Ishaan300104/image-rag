@@ -12,7 +12,6 @@ app = typer.Typer(
 def index(
     directory: Path = typer.Argument(..., help="Directory to scan for images/videos"),
     frame_interval: int = typer.Option(5, help="Seconds between video keyframes"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress per-file output"),
 ):
     """Index all images and videos in a directory (run once before searching)."""
     from imagerag.indexer import index_directory
@@ -22,7 +21,7 @@ def index(
         raise typer.Exit(1)
 
     rprint(f"[bold]Indexing[/bold] {directory} ...")
-    index_directory(directory, frame_interval=frame_interval, verbose=not quiet)
+    index_directory(directory, frame_interval=frame_interval)
 
 
 @app.command()
@@ -52,6 +51,21 @@ def search(
             rprint(f"  [cyan]{i}.[/cyan] {path}  [dim]@ {m}:{s:02d}  score={score:.3f}[/dim]")
         else:
             rprint(f"  [cyan]{i}.[/cyan] {path}  [dim]score={score:.3f}[/dim]")
+
+
+@app.command()
+def visualize(
+    output: Path = typer.Option(None, "--output", "-o", help="Save HTML to this path instead of a temp file"),
+):
+    """Visualize all embeddings in an interactive 3D plot (opens in browser)."""
+    from imagerag.visualize import visualize as do_visualize
+
+    try:
+        rprint("[bold]Reducing embeddings to 3D and building plot...[/bold]")
+        do_visualize(output_html=output)
+    except FileNotFoundError as e:
+        rprint(f"[red]{e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()
